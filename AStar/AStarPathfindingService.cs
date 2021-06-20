@@ -5,74 +5,167 @@ using Pathfinding.Data;
 
 namespace Pathfinding.AStar
 {
+    public class QueueNode 
+    {
+        public string Name { get; set; }
+        public List<string> PreviousNodes { get; set; }
+    }
+
     public class AStarSearchService
     {
-        private int step = 0;
-        private List<string> visitedNodes;
+        private PriorityQueue<QueueNode, int> _openNodeList;
+        private List<QueueNode> _visitedNodeList;
+
+        private List<Tuple<string, string, int>> _currentSolution;
+        private List<string> _solutionNodeList;
+
+        private int _step;
+
+        public AStarSearchService()
+        {
+            _openNodeList = new PriorityQueue<QueueNode, int>();
+            _visitedNodeList = new List<QueueNode>();
+            _currentSolution = new List<Tuple<string, string, int>>();
+            _step = 0;
+        }
         
         public void FindPath(string name)
         {
-            visitedNodes = new List<string>();
-            step = 0;
-            var totalSegments = new List<Tuple<string, string, int>>();
-            ExpandCurrentNode(name, totalSegments);
+            _openNodeList = new PriorityQueue<QueueNode, int>();
+            _visitedNodeList = new List<QueueNode>();
+            _currentSolution = new List<Tuple<string, string, int>>();
+            _solutionNodeList = new List<string>();
+            _step = 0;
 
-            Console.WriteLine("Solutia Finala: ");
-            totalSegments.ForEach(x => Console.WriteLine($"Segment: {x.Item1} - {x.Item2}: {x.Item3}"));
-            Console.WriteLine($"Distanta Totala: {totalSegments.Sum(x => x.Item3)}");
+            // Punctul de pornire - adaugam nodul de pornire la lista nodurilor ce trebuie expandate
+            var startNode = Distances.StraightLineDistance.FirstOrDefault(x => x.Item1 == name);
+            if(startNode == null) return;
+
+            var startQueueNode = new QueueNode {Name = startNode.Item1, PreviousNodes = null};
+            _openNodeList.Enqueue(startQueueNode, startNode.Item2);
+
+            ExpandCurrentNode();
+
+            if(_solutionNodeList != null && _solutionNodeList.Count > 1) 
+            {
+                var totalEdges = new List<Tuple<string, string, int>>();
+                for(int i = 0; i < _solutionNodeList.Count - 1; i++)
+                {
+                    var name1 = _solutionNodeList[i];
+                    var name2 = _solutionNodeList[i + 1];
+
+                    var edge = Distances.Edges
+                        .FirstOrDefault(x => (x.Item1 == name1 || x.Item1 == name2) && (x.Item2 == name1 || x.Item2 == name2));
+                    
+                    totalEdges.Add(edge);
+                }
+
+                Console.WriteLine("Solutia Finala: ");
+                totalEdges.ForEach(x => Console.WriteLine($"Segment {x.Item1} - {x.Item2}: Distanta {x.Item3}"));
+                Console.WriteLine($"Distanta totala: {totalEdges.Sum(x => x.Item3)}");
+            }
+         
         }
 
-        private void ExpandCurrentNode(string name, List<Tuple<string, string, int>> totalSegments)
+        private void ExpandCurrentNode()
         {
-            // Expandam nodul - daca nu este nodul final ("Bucuresti")
-            if(!name.Equals("Bucuresti"))
-            {
-                visitedNodes.Add(name);
-                Console.WriteLine($"Stagiul {++step}: ");
-                // Selectam vecinii nodului
-                var neighboursEdges = Distances.Edges
-                    .Where(x => x.Item1 == name || x.Item2 == name)
-                    .ToList();
-                
-                var neighbours = neighboursEdges
-                    .Select(x => x.Item1 == name ? x.Item2 : x.Item1)
-                    .ToList();
-                
-                var neighboursDistanceToBucharest = Distances.StraightLineDistance
-                    .Where(x => neighbours.Contains(x.Item1))
-                    .ToList();
+            // Selectam varful cozii
+            var queueTop = _openNodeList.Peek();
 
-                // Verificam vecinii - distanta estimata de la pornire spre destinatie trecand prin nodul vecin f(n)= g(n) + h(n)
-                var distanceSoFar = totalSegments.Sum(x => x.Item3);
-                var neighboursEstimatedTotalDistance = neighboursEdges
-                .Where(x => !visitedNodes.Contains(x.Item1) || !visitedNodes.Contains(x.Item2)) // nu includem noduri deja vizitate
+            // Daca varful cozii este Bucuresti cautarea s-a incheiat
+            if(queueTop.Name == "Bucuresti")
+            {
+                var solutionNodeList = new List<string>();
+                if(queueTop.PreviousNodes != null)
+                {
+                    solutionNodeList.AddRange(queueTop.PreviousNodes);
+                }
+                solutionNodeList.Add(queueTop.Name);
+                _solutionNodeList = solutionNodeList;
+                return;
+            }
+
+            Console.WriteLine($"Stagiul {++_step}: ");
+            Console.WriteLine($"Expandam nodul: {queueTop.Name}");
+
+            // adaugam la lista nodurilor vizitate
+            _visitedNodeList.Add(queueTop);
+
+            // Gasim vecinii si costurile asociate
+            var neighbours = Distances.Edges
+                .Where(x => x.Item1 == queueTop.Name || x.Item2 == queueTop.Name)
+                .ToList();
+            
+
+            var distanceSoFar = GetDistanceFromQueueTop(queueTop);
+            var neighboursAssociatedCosts = neighbours
                 .Select(x => 
                 {
-                    var distanceToBucharest = neighboursDistanceToBucharest
-                        .FirstOrDefault(y => y.Item1 == x.Item1 || y.Item1 == x.Item2);
+                    var neighbourName = queueTop.Name == x.Item1 ? x.Item2 : x.Item1;
+                    var straightLineToBucharest = Distances.StraightLineDistance
+                        .FirstOrDefault(x => x.Item1 == neighbourName); 
 
-                    return new Tuple<string, string, int, int>(x.Item1, x.Item2, x.Item3, x.Item3 + distanceToBucharest.Item2 + distanceSoFar);
+                    var neighbourTuple = new Tuple<string, string, int, int>(x.Item1, x.Item2, x.Item3, x.Item3 + straightLineToBucharest.Item2 + distanceSoFar);
+
+                    Console.WriteLine($"{neighbourTuple.Item1} - {neighbourTuple.Item2}: Distanta Totala provizorie: {neighbourTuple.Item4}");
+
+                    return neighbourTuple;
                 }).ToList();
-
-                Console.WriteLine($"Vecini {name}: ");
-                neighboursEstimatedTotalDistance.ForEach(x => Console.WriteLine($"{(name == x.Item1 ? x.Item2 : x.Item1)} - Distanta estimata prin nod spre Bucuresti: {x.Item4}"));
-
-                // Alegem vecinul cu cea mai mica distanta estimata trecand prin nod
-                var shortestDistanceToBucharest = neighboursEstimatedTotalDistance
-                    .OrderBy(x => x.Item4)
-                    .FirstOrDefault();
-
-                var nextNodeName = name == shortestDistanceToBucharest.Item1 ? shortestDistanceToBucharest.Item2 : shortestDistanceToBucharest.Item1;
-                Console.WriteLine($"Nodul selectat: {nextNodeName}");
-                var currentSegment = new Tuple<string, string, int>(shortestDistanceToBucharest.Item1, shortestDistanceToBucharest.Item2, shortestDistanceToBucharest.Item3);
             
-                // Adaugam vecinul la lista curenta a nodurilor cautate / lista segmentelor selectate
-                totalSegments.Add(currentSegment);
+            // Adaugam vecinii expandati la coada deschisa (incluzand costurile asociate)
+            neighboursAssociatedCosts.ForEach(x => 
+            {
+                var neighbourName = queueTop.Name == x.Item1 ? x.Item2 : x.Item1;
 
-                // Expandam noul nod - recursivitate
-                ExpandCurrentNode(nextNodeName, totalSegments);
+                var previousNodes = new List<string>();
+                if(queueTop.PreviousNodes != null && queueTop.PreviousNodes.Count > 0) 
+                {
+                    previousNodes.AddRange(queueTop.PreviousNodes);
+                }
+                previousNodes.Add(queueTop.Name);
+
+                var newQueueNode = new QueueNode { Name = neighbourName, PreviousNodes = previousNodes };
+                _openNodeList.Enqueue(newQueueNode, x.Item4);
+            });
+
+            // Scoatem varful cozii
+            _openNodeList.Dequeue();
+
+            ExpandCurrentNode();
+        }
+
+        private int GetDistanceFromQueueTop(QueueNode queueTop)
+        {
+            var nodeList = new List<string>();
+
+            if(queueTop.PreviousNodes != null)
+            {
+                nodeList.AddRange(queueTop.PreviousNodes);
             }
-            return;
+
+            nodeList.Add(queueTop.Name);
+
+            if(nodeList != null && nodeList.Count > 1) 
+            {
+                var currentEdgesDistance = 0;
+                for(int i = 0; i < nodeList.Count - 1; i++)
+                {
+                    var name1 = nodeList[i];
+                    var name2 = nodeList[i + 1];
+
+                    var edge = Distances.Edges
+                        .FirstOrDefault(x => (x.Item1 == name1 || x.Item1 == name2) && (x.Item2 == name1 || x.Item2 == name2));
+                    
+                    if(edge != null)
+                    {
+                        currentEdgesDistance += edge.Item3;
+                    }
+                }
+
+                return currentEdgesDistance;
+            }
+
+            return 0;
         }
     }
 }
