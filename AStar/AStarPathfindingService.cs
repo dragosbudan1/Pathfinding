@@ -72,6 +72,28 @@ namespace Pathfinding.AStar
             // Selectam varful cozii
             var queueTop = _openNodeList.Peek();
 
+            Console.WriteLine("##### COADA CURENTA #####");
+            var printList = _openNodeList.UnorderedItems.OrderBy(x => x.Priority).ToList();
+            foreach(var node in printList)
+            {
+                var previousNodeString = new String("");
+                if(node.Element.PreviousNodes != null && node.Element.PreviousNodes.Any())
+                {
+                for(int i = 0; i < node.Element.PreviousNodes.Count; i++)
+                    {
+                        previousNodeString += node.Element.PreviousNodes[i];
+                        if(i != node.Element.PreviousNodes.Count - 1) 
+                        {
+                        
+                            previousNodeString += ", ";
+                        }
+                    }
+                }
+
+                Console.WriteLine($"Nod: {node.Element.Name}, Noduri anterioare: {previousNodeString}, Distanta provizorie: {node.Priority}");
+            }
+            Console.WriteLine("##### SFARSIT COADA CURENTA #####");
+
             // Daca varful cozii este Bucuresti cautarea s-a incheiat
             if(queueTop.Name == "Bucuresti")
             {
